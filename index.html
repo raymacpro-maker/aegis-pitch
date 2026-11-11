@@ -1,0 +1,660 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AEGIS — How It Works</title>
+<style>
+  :root{
+    --bg:#080b10; --panel:#0e131b; --panel2:#141b25; --line:#1e2836;
+    --ink:#e8edf4; --dim:#93a1b3; --faint:#5d6b7e;
+    --cyan:#3ad6e0; --amber:#f5b642; --green:#5fd68a; --red:#ff6b6b;
+    --violet:#a78bfa; --pink:#f472b6;
+    --now:#3ad6e0; --onset:#f5b642; --event:#ff6b6b; --after:#a78bfa;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  .wrap{max-width:1240px;margin:0 auto;padding:28px 20px 90px}
+
+  header{border-bottom:1px solid var(--line);padding-bottom:20px;margin-bottom:26px}
+  h1{font-size:30px;letter-spacing:-.02em;margin:0 0 6px}
+  h1 span{color:var(--cyan)}
+  .sub{color:var(--dim);font-size:15px;max-width:760px}
+  .meta{color:var(--faint);font-size:12.5px;margin-top:12px}
+
+  h2{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);
+    margin:44px 0 14px;font-weight:600;border-bottom:1px solid var(--line);padding-bottom:8px}
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px}
+  .grid{display:grid;gap:14px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:repeat(3,1fr)}
+  .g4{grid-template-columns:repeat(4,1fr)}
+  @media(max-width:900px){.g2,.g3,.g4{grid-template-columns:1fr}}
+
+  .controls{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:18px 0 6px}
+  button{background:var(--panel2);color:var(--ink);border:1px solid var(--line);
+    border-radius:8px;padding:9px 15px;font-size:14px;cursor:pointer;font-family:inherit}
+  button:hover{border-color:var(--cyan);color:var(--cyan)}
+  button.on{background:var(--cyan);color:#041016;border-color:var(--cyan);font-weight:600}
+  .spacer{flex:1}
+
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--dim);margin:12px 0}
+  .legend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+
+  .layer{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:14px 18px;position:relative;overflow:hidden}
+  .layer::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c,var(--line))}
+  .layer h4{margin:0 0 4px;font-size:15px}
+  .layer .lvl{font-size:11px;color:var(--c);letter-spacing:.12em;text-transform:uppercase;font-weight:700}
+  .layer p{margin:6px 0 0;font-size:13.5px;color:var(--dim)}
+  .layer .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;
+    border:1px solid var(--line);color:var(--faint);margin-top:8px}
+
+  /* stack diagram */
+  .stack{display:flex;flex-direction:column;gap:6px}
+  .stack .layer{transition:.35s}
+  .stack .layer.dim{opacity:.32;filter:saturate(.3)}
+  .stack .layer.hot{border-color:var(--c);box-shadow:0 0 0 1px var(--c),0 0 28px -12px var(--c)}
+
+  /* flow */
+  .flow{display:flex;gap:6px;flex-wrap:wrap;align-items:stretch;margin:14px 0}
+  .step{flex:1;min-width:110px;background:var(--panel2);border:1px solid var(--line);
+    border-radius:10px;padding:12px 13px;position:relative;transition:.25s}
+  .step .n{font-size:10.5px;color:var(--faint);letter-spacing:.12em;font-weight:700}
+  .step .t{font-weight:650;font-size:14px;margin:4px 0 5px}
+  .step .d{font-size:12.5px;color:var(--dim);line-height:1.45}
+  .step.live{border-color:var(--cyan);background:linear-gradient(180deg,rgba(58,214,224,.14),transparent)}
+  .step.done{opacity:.45}
+  .step .tick{position:absolute;top:10px;right:11px;font-size:13px;color:var(--green);opacity:0;transition:.25s}
+  .step.done .tick,.step.live .tick{opacity:1}
+
+  /* svg */
+  svg{width:100%;height:auto;display:block;background:transparent}
+  .node{cursor:pointer}
+  .node circle{transition:.3s}
+  .node text{font-size:10.5px;fill:var(--dim);pointer-events:none;font-family:inherit}
+  .node.on text{fill:var(--ink)}
+  .node.on circle{stroke-width:2.5}
+  .edge{stroke:var(--line);stroke-width:1.4;fill:none;transition:.3s}
+  .edge.hot{stroke:var(--cyan);stroke-width:2;stroke-dasharray:4 3;animation:dash 1s linear infinite}
+  @keyframes dash{to{stroke-dashoffset:-14}}
+  .zone{fill:none;stroke:var(--line);stroke-width:1;stroke-dasharray:3 4}
+
+  /* readouts */
+  .row{display:flex;justify-content:space-between;gap:12px;padding:7px 0;
+    border-bottom:1px solid var(--line);font-size:13.5px}
+  .row:last-child{border-bottom:0}
+  .row .k{color:var(--dim)}
+  .row .v{font-weight:600;text-align:right}
+  .bar{height:5px;background:var(--panel2);border-radius:3px;overflow:hidden;margin-top:4px}
+  .bar i{display:block;height:100%;border-radius:3px;transition:width .5s}
+  .mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+
+  .eventlog{background:#06090d;border:1px solid var(--line);border-radius:10px;
+    padding:12px 14px;height:260px;overflow-y:auto;font-size:12.5px;line-height:1.75}
+  .eventlog div{padding:2px 0;border-bottom:1px solid rgba(30,40,54,.45)}
+  .eventlog .t{color:var(--faint);margin-right:8px;font-variant-numeric:tabular-nums}
+  .eventlog .ok{color:var(--green)} .eventlog .warn{color:var(--amber)}
+  .eventlog .err{color:var(--red)} .eventlog .info{color:var(--cyan)}
+  .eventlog .hi{color:var(--violet)}
+
+  .note{background:rgba(245,182,66,.07);border:1px solid rgba(245,182,66,.28);
+    border-radius:10px;padding:14px 16px;font-size:13.5px;color:#e5cf9c;margin-top:14px}
+  .note strong{color:var(--amber)}
+  .note.blue{background:rgba(58,214,224,.06);border-color:rgba(58,214,224,.26);color:#bfe9ee}
+  .note.blue strong{color:var(--cyan)}
+
+  .tbl{width:100%;border-collapse:collapse;font-size:13.5px}
+  .tbl th{text-align:left;color:var(--faint);font-weight:600;font-size:11px;
+    letter-spacing:.11em;text-transform:uppercase;padding:8px 10px;border-bottom:1px solid var(--line)}
+  .tbl td{padding:9px 10px;border-bottom:1px solid var(--line);vertical-align:top}
+  .tbl tr:last-child td{border-bottom:0}
+  .tbl code{background:var(--panel2);padding:1.5px 6px;border-radius:4px;font-size:12.5px;color:var(--cyan)}
+
+  .chips{display:flex;gap:8px;flex-wrap:wrap}
+  .chip{font-size:12px;padding:4px 11px;border-radius:20px;border:1px solid var(--line);color:var(--dim)}
+  .chip b{color:var(--ink);font-weight:600}
+  .lead{font-size:17px;line-height:1.65;color:var(--ink);max-width:900px}
+  .lead b{color:var(--cyan)}
+  .kicker{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--faint);
+    font-weight:700;margin-bottom:8px}
+  .hide{display:none!important}
+  footer{margin-top:56px;padding-top:20px;border-top:1px solid var(--line);
+    color:var(--faint);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <h1>AEGIS — <span>How It Works</span></h1>
+  <p class="sub">An interactive model of the operating architecture. Three layers, one decision loop,
+     two operating modes. Switch modes, run the loop, and watch where each part sits and what it decides.</p>
+  <p class="meta">NSF SBIR/STTR Phase I Project Pitch · companion to <code>PROJECT-PITCH-v0.7-SUBMISSION.md</code> ·
+     internal review draft, not for submission · v1.0</p>
+</header>
+
+<!-- ═══════════ 1. THE ONE THING ═══════════ -->
+<h2>1 · The one thing</h2>
+<div class="card">
+  <p class="lead">A smart city collects data. <b>An intelligent city can be trusted to act.</b></p>
+  <p class="lead" style="margin-top:12px;color:var(--dim)">
+    AEGIS is a <b>decision layer for a water utility</b>. It sits across a utility's existing systems —
+    SCADA, smart meters, GIS, work orders — and does the one thing they cannot: <b>decide what to do next,
+    and prove the decision was right.</b> It decides by <b>rehearsing</b> rather than improvising.
+  </p>
+</div>
+
+<!-- ═══════════ 2. THE STACK ═══════════ -->
+<h2>2 · The stack — what sits on top of what</h2>
+<div class="controls">
+  <button id="btnNorm" class="on" onclick="setMode('normal')">Normal conditions</button>
+  <button id="btnGrid" onclick="setMode('grid')">Grid down</button>
+  <span class="spacer"></span>
+  <span style="font-size:12.5px;color:var(--faint)">Hover a layer to isolate it</span>
+</div>
+
+<div class="grid g2" style="align-items:start">
+  <div class="stack" id="stack">
+    <div class="layer" data-layer="agents" style="--c:var(--pink)">
+      <div class="lvl">Layer 4 · Decide</div>
+      <h4>Agents — Admiral + specialists</h4>
+      <p id="l4d">Supervisory Admiral over specialists (water, weather &amp; hazard, compliance, assets, cost).
+        Sees only the trust-weighted picture, resolves conflicts between specialists, exchanges structured
+        information rather than conversational messages. Specialists <b>act</b>, not merely report, through
+        explicit authority envelopes and an auditable log.</p>
+      <span class="tag" id="l4t">Deterministic · rule-bounded · approval gates</span>
+    </div>
+    <div class="layer" data-layer="rehearse" style="--c:var(--cyan)">
+      <div class="lvl">Layer 3 · The four speeds</div>
+      <h4>Rehearsal engine</h4>
+      <p id="l3d">Holds a library of scenario archetypes grounded in real events (freeze-thaw main-break seasons,
+        flood, HazMat release, cascading outage) and <b>replays them continuously against live operational data</b> —
+        asset registry, crew roster, traffic, weather, inventory — scoring each candidate response plan against a
+        human-planning baseline.</p>
+      <span class="tag" id="l3t">The research contribution · the falsifiable claim</span>
+    </div>
+    <div class="layer" data-layer="ontology" style="--c:var(--green)">
+      <div class="lvl">Layer 2 · Understand</div>
+      <h4>Ontology + trust</h4>
+      <p id="l2d"><b>Zone mesh</b> — a two-tier spatial-semantic map (service zones over semantic zones) with learned
+        routing preferences between zones, weighted by inverse hop count. <b>Data-trust scoring</b> — every feed
+        carries a decaying score for how much to believe it right now, and the weighting adapts to regime:
+        stable → speed-of-reply, volatile → freshness, unknown → blend.</p>
+      <span class="tag" id="l2t">Bounded · interpretable · decays</span>
+    </div>
+    <div class="layer" data-layer="fabric" style="--c:var(--amber)">
+      <div class="lvl">Layer 1 · Connect</div>
+      <h4>Swarm federation fabric</h4>
+      <p id="l1d">Each node keeps a small local table of pheromone scores for its neighbours — trust, latency,
+        reliability, <i>right now</i> — learned passively from who actually answers. When a message must travel
+        more than one hop, a node selects <b>no more than one</b> neighbour to pass it to; the rest stay quiet.</p>
+      <span class="tag" id="l1t">The transport layer · patented US 7,957,355 B1</span>
+    </div>
+  </div>
+
+  <div>
+    <div class="card">
+      <div class="kicker" id="modeKicker">Normal conditions</div>
+      <p style="margin:0 0 14px" id="modeDesc">
+        The agentic ontological layer runs on the utility's existing central systems. The swarm fabric federates
+        the <b>fragmented edges</b> — the systems nobody integrated.
+      </p>
+      <div class="row"><span class="k">Network</span><span class="v" id="mNet">Central systems (SCADA · AMI · GIS · work orders)</span></div>
+      <div class="row"><span class="k">Swarm fabric does</span><span class="v" id="mFabric">Federates the edges</span></div>
+      <div class="row"><span class="k">Agentic layer runs on</span><span class="v" id="mAgent">The central systems</span></div>
+      <div class="row"><span class="k">Authority envelopes</span><span class="v" id="mAuth">Unchanged</span></div>
+      <div class="row"><span class="k">Human approval gates</span><span class="v" id="mGate">Unchanged</span></div>
+    </div>
+    <div class="note blue" id="modeNote">
+      <strong>What changes in grid-down.</strong> The fixed tier — pumps, treatment, SCADA — dies with the grid.
+      The surviving mobile tier forms a <b>MANET</b>: crews, tankers and inspectors talking directly, with no
+      central platform, no fixed power and no fixed infrastructure. The swarm fabric establishes it. The agentic
+      layer <b>does not switch off and start improvising</b> — it runs on that MANET, against the scenarios already
+      rehearsed and the trust scores already learned. <b>Authority envelopes and human gates are unchanged.</b>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 3. THE LOOP ═══════════ -->
+<h2>3 · The decision loop</h2>
+<p style="color:var(--dim);max-width:860px;margin:0 0 4px">
+  Six verbs. This is the whole system running end to end.
+</p>
+<div class="flow" id="flow">
+  <div class="step" data-s="0"><div class="n">STEP 1</div><div class="t">Sense</div>
+    <div class="d">Pull the live picture: SCADA, AMI, GIS, work orders, leak log, weather, traffic, crew roster, contractor status.</div>
+    <div class="tick">✓</div></div>
+  <div class="step" data-s="1"><div class="n">STEP 2</div><div class="t">Analyse</div>
+    <div class="d">Trust-score every feed for right now. Build the zone picture. Label each fact with how fresh it is and how much to believe it.</div>
+    <div class="tick">✓</div></div>
+  <div class="step" data-s="2"><div class="n">STEP 3</div><div class="t">Decide</div>
+    <div class="d">Rehearse: match the situation against the scenario library, synthesise candidate plans, score each against the human-planning baseline.</div>
+    <div class="tick">✓</div></div>
+  <div class="step" data-s="3"><div class="n">STEP 4</div><div class="t">Authorise</div>
+    <div class="d">Check the plan against the authority envelope. Low consequence → proceed. High consequence → a human approves. Stale plans are refused, not executed.</div>
+    <div class="tick">✓</div></div>
+  <div class="step" data-s="4"><div class="n">STEP 5</div><div class="t">Act</div>
+    <div class="d">Dispatch the crew, raise the work order, order the parts. The swarm fabric carries every message — and routes around whatever link is down.</div>
+    <div class="tick">✓</div></div>
+  <div class="step" data-s="5"><div class="n">STEP 6</div><div class="t">Verify</div>
+    <div class="d">Compare the real outcome to the rehearsed plan. Feed the residual back into the zone field, the trust scores and the library.</div>
+    <div class="tick">✓</div></div>
+</div>
+<div class="controls">
+  <button id="btnRun" onclick="runLoop()">▶ Run the loop</button>
+  <button onclick="resetLoop()">↺ Reset</button>
+  <span class="spacer"></span>
+  <span style="font-size:12.5px;color:var(--faint)" id="loopStatus">Idle — press run</span>
+</div>
+
+<!-- ═══════════ 4. WORKED EXAMPLE ═══════════ -->
+<h2>4 · A worked example — what the loop actually does</h2>
+<p style="color:var(--dim);max-width:880px;margin:0 0 4px">
+  A freeze-thaw main break in Zone 3. Nothing here is hypothetical — every quantity is drawn from the utility's
+  own published data, and the scenario is one of the archetypes AEGIS rehearses continuously.
+</p>
+<div class="grid g2" style="align-items:start;margin-top:14px">
+  <div class="card">
+    <div class="kicker">Scenario</div>
+    <table class="tbl" style="margin-bottom:12px">
+      <tr><td style="color:var(--dim);width:46%">Main break, Zone 3</td><td class="mono">−4°C, freeze-thaw</td></tr>
+      <tr><td style="color:var(--dim)">Customers affected</td><td class="mono">412</td></tr>
+      <tr><td style="color:var(--dim)">Crews available</td><td class="mono">3</td></tr>
+      <tr><td style="color:var(--dim)">Priority 1 response target</td><td class="mono">3 hours</td></tr>
+      <tr><td style="color:var(--dim)">Outage-duration metric</td><td style="color:var(--amber)">does not exist</td></tr>
+    </table>
+    <div class="kicker">Rehearsal result (computed before the break)</div>
+    <div class="row"><span class="k">Plan A — nearest crew</span><span class="v mono">2h 41m</span>
+      <div class="bar"><i style="width:89%;background:var(--green)"></i></div></div>
+    <div class="row"><span class="k">Plan B — zone-aware + parts-matched</span><span class="v mono">1h 58m</span>
+      <div class="bar"><i style="width:65%;background:var(--cyan)"></i></div></div>
+    <div class="row"><span class="k">Human planning baseline</span><span class="v mono">3h 12m</span>
+      <div class="bar"><i style="width:100%;background:var(--faint)"></i></div></div>
+    <div class="row"><span class="k">Improvement vs baseline</span><span class="v" style="color:var(--green)">38% faster</span></div>
+    <div class="row"><span class="k">Cost delta</span><span class="v" style="color:var(--green)">−12% crew-hours</span></div>
+  </div>
+  <div>
+    <div class="card">
+      <div class="kicker">What each layer contributed</div>
+      <table class="tbl">
+        <tr><th>Layer</th><th>Contribution</th></tr>
+        <tr><td><b style="color:var(--amber)">1 · Fabric</b></td>
+            <td>Work order reaches the crew, the parts store and the contractor — routed around a dead zone at the
+                north end rather than failing.</td></tr>
+        <tr><td><b style="color:var(--green)">2 · Ontology + trust</b></td>
+            <td>The leak-logger feed has been answering slowly for 20 minutes → its trust score has decayed → it is
+                weighted down. The SCADA pressure feed is fresh → weighted up. That changes the zone picture.</td></tr>
+        <tr><td><b style="color:var(--cyan)">3 · Rehearsal</b></td>
+            <td>Freeze-thaw archetype replayed against today's crews, today's traffic, today's weather. Plan B beats
+                the human baseline on time and cost.</td></tr>
+        <tr><td><b style="color:var(--pink)">4 · Agents</b></td>
+            <td>Water specialist produces the plan; assets specialist confirms the isolation valve and the excavator;
+                the Admiral resolves the conflict between them. High-consequence step → human approval.</td></tr>
+      </table>
+    </div>
+    <div class="note">
+      <strong>Note what the swarm did NOT do.</strong> It did not decide which crew to send. It did not prioritise
+      Zone 3 over Zone 5. It did not choose the repair method. <b>One crew repairs one leak.</b> What the swarm
+      made possible is that the crew, the work order, the parts inventory, the leak log and the contractor all
+      stayed in one federated picture — which is precisely what the utility's own consultant found missing.
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ 5. THE NETWORK VIEW ═══════════ -->
+<h2>5 · The network — and what happens when a link dies</h2>
+<p style="color:var(--dim);max-width:880px;margin:0 0 4px">
+  Click a node to see its scorecard. Click <b>Break a link</b> to watch the fabric route around it.
+</p>
+<div class="controls">
+  <button id="btnBreak" onclick="breakLink()">⚡ Break a link</button>
+  <button onclick="restoreLink()">↺ Restore</button>
+  <span class="spacer"></span>
+  <span style="font-size:12.5px;color:var(--faint)" id="netStatus">All links healthy</span>
+</div>
+<div class="card" style="padding:8px">
+  <svg viewBox="0 0 880 380" id="netsvg">
+    <defs>
+      <marker id="arw" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto">
+        <path d="M0,0 L0,6 L6,3 z" fill="#3d4b5e"/>
+      </marker>
+    </defs>
+    <g id="netEdges"></g>
+    <g id="netNodes"></g>
+  </svg>
+</div>
+<div class="grid g3" style="margin-top:14px">
+  <div class="card">
+    <div class="kicker">Selected node</div>
+    <div class="row"><span class="k">Node</span><span class="v" id="selName">—</span></div>
+    <div class="row"><span class="k">Trust score</span><span class="v mono" id="selTrust">—</span></div>
+    <div class="row"><span class="k">Latency</span><span class="v mono" id="selLat">—</span></div>
+    <div class="row"><span class="k">Reliability</span><span class="v mono" id="selRel">—</span></div>
+  </div>
+  <div class="card">
+    <div class="kicker">Neighbour scorecard</div>
+    <div class="row"><span class="k">Best neighbour</span><span class="v" id="selBest">—</span></div>
+    <div class="row"><span class="k">Pheromone value</span><span class="v mono" id="selPh">—</span></div>
+    <div class="row"><span class="k">Selected for relay</span><span class="v" id="selRelay">—</span></div>
+    <div class="row"><span class="k">Others</span><span class="v">stay quiet</span></div>
+  </div>
+  <div class="card">
+    <div class="kicker">Delivery</div>
+    <div class="row"><span class="k">Hops</span><span class="v mono" id="selHops">—</span></div>
+    <div class="row"><span class="k">Status</span><span class="v" id="selStatus">—</span></div>
+    <div class="row"><span class="k">Central platform</span><span class="v" id="selPlat">—</span></div>
+  </div>
+</div>
+
+<!-- ═══════════ 6. EVENT LOG ═══════════ -->
+<h2>6 · Event log</h2>
+<div class="eventlog" id="log"></div>
+
+<!-- ═══════════ 7. THE FOUR SPEEDS ═══════════ -->
+<h2>7 · The four speeds — and why the transitions are the hard part</h2>
+<p style="color:var(--dim);max-width:880px;margin:0 0 14px">
+  A sensing-and-actuation system has only four possible states, and almost every deployed system sits in exactly
+  one. The transitions between them are where both the value and the risk live.
+</p>
+<div class="grid g4">
+  <div class="layer" style="--c:var(--now)">
+    <div class="lvl">NOW · rehearse</div><h4>Rehearse</h4>
+    <p>Scenario library + replay harness + plan synthesis, scored against a human-planning baseline.</p>
+    <span class="tag">Scenario generation from live state</span>
+  </div>
+  <div class="layer" style="--c:var(--onset)">
+    <div class="lvl">ONSET · recognise</div><h4>Recognise</h4>
+    <p>Scenario-match detector; confidence weighted by trust scores.</p>
+    <span class="tag">Match a rehearsed plan — one engine, many hazards</span>
+  </div>
+  <div class="layer" style="--c:var(--event)">
+    <div class="lvl">EVENT · act</div><h4>Act</h4>
+    <p>Pre-computed plan executor: envelope check → approval gate → execute → audit.</p>
+    <span class="tag">Binding problem, not a reasoning problem</span>
+  </div>
+  <div class="layer" style="--c:var(--after)">
+    <div class="lvl">AFTER · learn</div><h4>Learn</h4>
+    <p>Outcome reconciliation → residual analysis → field, trust and library update.</p>
+    <span class="tag">The rehearsal library is itself adaptive</span>
+  </div>
+</div>
+<div class="note">
+  <strong>The architecture rule — learning where safe, deterministic where lethal.</strong>
+  Pheromone fields, trust scoring and zone learning are online, bounded, interpretable and decaying.
+  Forecasting is narrow supervised ML, forecast-only. Everything that <em>acts</em> — dispatch, routing, action
+  selection, plan execution — is deterministic and rule-bounded, because in a disaster distribution shift is extreme
+  and reinforcement learning hallucinates-optimises exactly where provable correctness is required.
+  <br><br>
+  <em>AEGIS uses learning where it is safe and deterministic reasoning where it is lethal. The action layer is
+  deliberately not an AI model improvising in a crisis.</em>
+</div>
+
+<!-- ═══════════ 8. HONEST LIMITS ═══════════ -->
+<h2>8 · What this does not do</h2>
+<div class="grid g2">
+  <div class="card">
+    <div class="kicker" style="color:var(--red)">We do not claim</div>
+    <ul style="margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:13.5px;line-height:1.8">
+      <li>To keep fixed infrastructure alive through a grid collapse. <b style="color:var(--ink)">Pumps, treatment and SCADA die with the grid.</b></li>
+      <li>To predict novel disasters. It rehearses grounded scenario archetypes.</li>
+      <li>To replace the utility's control centre. The swarm earns its place at the edges and in grid-down operation.</li>
+      <li>To swarm-dispatch crews. <b style="color:var(--ink)">One crew repairs one leak.</b></li>
+      <li>To have better leak detection. Detection is solved; the gap is the decision after it.</li>
+      <li>To hold any ISAC IP.</li>
+    </ul>
+  </div>
+  <div class="card">
+    <div class="kicker" style="color:var(--green)">What it does do</div>
+    <ul style="margin:8px 0 0;padding-left:20px;color:var(--dim);font-size:13.5px;line-height:1.8">
+      <li>Prove, with a score, that a rehearsed decision beats a human-planned one.</li>
+      <li>Codify a utility's undocumented operating procedures into something executable and measurable.</li>
+      <li>Keep crew, work order, parts, leak log and contractor in one federated picture.</li>
+      <li>Keep answering when the network breaks — routing around gaps rather than going blind.</li>
+      <li>Refuse a stale plan rather than execute it.</li>
+      <li>Show a number, including where it loses.</li>
+    </ul>
+  </div>
+</div>
+
+<!-- ═══════════ 9. GLOSSARY ═══════════ -->
+<h2>9 · Glossary</h2>
+<div class="card">
+  <table class="tbl">
+    <tr><td style="width:30%"><b>Swarm federation fabric</b></td><td>The transport layer. Every node keeps a small scorecard of its neighbours and picks one to pass messages to. No central routing table. <i>Patented — US 7,957,355 B1.</i></td></tr>
+    <tr><td><b>Pheromone score</b></td><td>A decaying reputation score on a <i>connection</i> — built up when that neighbour answers reliably, fading when it doesn't. It scores data and links, never vehicles or people.</td></tr>
+    <tr><td><b>Zone mesh</b></td><td>Two-tier map: geographic zones (service areas, corridors, feeders) over semantic zones (asset class, owning organisation, criticality).</td></tr>
+    <tr><td><b>Destination-zone pheromone</b></td><td>A learned score for "who is the best next hop <i>for reaching Zone X</i>", weighted by inverse hop count.</td></tr>
+    <tr><td><b>Data-trust scoring</b></td><td>A live number for how much to believe a given feed right now. Adapts to regime: stable → speed-of-reply, volatile → freshness, unknown → blend.</td></tr>
+    <tr><td><b>MANET</b></td><td>Mobile Ad-hoc NETwork — devices that form a network directly with each other, with no central server. What the surviving mobile tier becomes when the grid goes down.</td></tr>
+    <tr><td><b>Rehearsal</b></td><td>Replaying a scenario against live data to produce and score a response plan, before it is needed.</td></tr>
+    <tr><td><b>Scenario archetype</b></td><td>A reusable class of event grounded in real history — freeze-thaw main-break season, flood, HazMat release, cascading outage.</td></tr>
+    <tr><td><b>Authority envelope</b></td><td>The defined limits of what the system may do without asking a human.</td></tr>
+    <tr><td><b>Approval gate</b></td><td>The point where a high-consequence action must be signed off by a person.</td></tr>
+    <tr><td><b>Human-planning baseline</b></td><td>What an experienced operator would have done. The score that makes the claim falsifiable.</td></tr>
+    <tr><td><b>SCADA / AMI / GIS</b></td><td>Supervisory control · smart meters reporting hourly · the map database of which pipes are where.</td></tr>
+  </table>
+</div>
+
+<footer>
+  <p><b>Review this, don't just read it.</b> If any part of the picture is wrong, the picture is the problem —
+     send corrections straight back rather than editing around them.</p>
+  <p style="margin-top:8px">Companion to the NSF Project Pitch v0.7. Figures trace to
+     <code>02-research/ANGLE-5-AUSTIN-WATER-HARD-NUMBERS.md</code>. Patent position asserted and pending Bluetronix
+     written confirmation. Internal draft — not for submission.</p>
+</footer>
+
+</div>
+
+<script>
+/* ═══════════════ STATE ═══════════════ */
+let MODE='normal';
+const NODES=[
+  {id:'ctrl',  x:440,y:52,  label:'Control Center',   type:'fixed', trust:0.97,lat:'12ms',rel:'99.8%'},
+  {id:'scada', x:200,y:150, label:'SCADA',            type:'fixed', trust:0.95,lat:'24ms',rel:'99.5%'},
+  {id:'ami',   x:440,y:150, label:'250k AMI meters',  type:'fixed', trust:0.93,lat:'60ms',rel:'99.2%'},
+  {id:'gis',   x:680,y:150, label:'GIS + leak map',   type:'fixed', trust:0.91,lat:'38ms',rel:'99.0%'},
+  {id:'wo',    x:440,y:250, label:'Work orders',      type:'fixed', trust:0.86,lat:'90ms',rel:'96.4%'},
+  {id:'crew1', x:160,y:300, label:'Crew 1',           type:'mobile',trust:0.82,lat:'140ms',rel:'93.1%'},
+  {id:'crew2', x:440,y:330, label:'Crew 2',           type:'mobile',trust:0.78,lat:'165ms',rel:'91.8%'},
+  {id:'crew3', x:720,y:300, label:'Crew 3',           type:'mobile',trust:0.75,lat:'180ms',rel:'90.2%'},
+  {id:'contr', x:620,y:235, label:'Contractor',       type:'mobile',trust:0.61,lat:'310ms',rel:'84.5%'}
+];
+const EDGES=[
+  ['ctrl','scada'],['ctrl','ami'],['ctrl','gis'],['ctrl','wo'],
+  ['scada','crew1'],['ami','crew2'],['gis','contr'],['wo','crew3'],
+  ['crew1','crew2'],['crew2','crew3'],['crew1','contr'],['crew3','contr'],['wo','contr']
+];
+let BROKEN=null, SELECTED=null;
+const NS='http://www.w3.org/2000/svg';
+
+function el(t,a){const e=document.createElementNS(NS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
+function byId(n){return NODES.find(x=>x.id===n);}
+
+/* ═══════════════ NET RENDER ═══════════════ */
+function drawNet(){
+  const ge=document.getElementById('netEdges'), gn=document.getElementById('netNodes');
+  ge.innerHTML=''; gn.innerHTML='';
+  EDGES.forEach(([a,b])=>{
+    const A=byId(a),B=byId(b);
+    const dead = BROKEN && ((BROKEN[0]===a&&BROKEN[1]===b)||(BROKEN[0]===b&&BROKEN[1]===a));
+    const line=el('line',{x1:A.x,y1:A.y,x2:B.x,y2:B.y,class:'edge'+(dead?' dead':''),
+      'stroke-dasharray':dead?'3 5':'','stroke':dead?'#ff6b6b':'#1e2836'});
+    ge.appendChild(line);
+    // faint zone mesh circles
+  });
+  // zone mesh
+  [[440,150,150],[200,150,96],[680,150,92]].forEach(([x,y,r])=>{
+    gn.appendChild(el('circle',{cx:x,cy:y,r:r,class:'zone',opacity:.5}));
+  });
+  NODES.forEach(n=>{
+    const g=el('g',{class:'node'+(SELECTED===n.id?' on':''),transform:`translate(${n.x},${n.y})`});
+    const col = n.type==='mobile' ? (MODE==='grid'?'#ff6b6b':'#f5b642') : '#3ad6e0';
+    const dead = MODE==='grid' && n.type==='fixed';
+    g.appendChild(el('circle',{r:15,fill:dead?'#161b22':'#0e131b',stroke:dead?'#3a2630':col,
+      'stroke-width':SELECTED===n.id?2.5:1.6}));
+    g.appendChild(el('circle',{r:4.5,fill:dead?'#3a2630':col}));
+    const t=el('text',{x:0,y:30,'text-anchor':'middle',fill:dead?'#5d6b7e':'#93a1b3'});
+    t.textContent=n.label; g.appendChild(t);
+    g.addEventListener('click',()=>selectNode(n.id));
+    gn.appendChild(g);
+  });
+}
+function selectNode(id){
+  SELECTED=id; const n=byId(id);
+  document.getElementById('selName').textContent=n.label;
+  document.getElementById('selTrust').textContent=n.trust.toFixed(2);
+  document.getElementById('selLat').textContent=n.lat;
+  document.getElementById('selRel').textContent=n.rel;
+  // best neighbour = highest trust among neighbours
+  const nbs=EDGES.filter(([a,b])=>a===id||b===id).map(([a,b])=>a===id?b:a);
+  let best=null,bt=-1;
+  nbs.forEach(x=>{ if(BROKEN&&((BROKEN[0]===id&&BROKEN[1]===x)||(BROKEN[0]===x&&BROKEN[1]===id))) return;
+                    const s=byId(x).trust; if(s>bt){bt=s;best=x;} });
+  document.getElementById('selBest').textContent = best?byId(best).label:'— no route —';
+  document.getElementById('selPh').textContent = best?bt.toFixed(3):'—';
+  document.getElementById('selRelay').textContent = best?'YES — this one only':'none';
+  document.getElementById('selHops').textContent = best?'1–3':'unreachable';
+  document.getElementById('selStatus').textContent = best?'delivered':'FAILED';
+  document.getElementById('selStatus').style.color = best?'var(--green)':'var(--red)';
+  document.getElementById('selPlat').textContent = MODE==='grid'?'DOWN — MANET in its place':'up';
+  drawNet();
+}
+function breakLink(){
+  const alive=EDGES.filter(([a,b])=>!((a==='wo'&&b==='crew3')||(a==='crew3'&&b==='wo')));
+  BROKEN=['wo','crew3'];
+  document.getElementById('netStatus').textContent='Work orders ↔ Crew 3 link DOWN — routing around it';
+  document.getElementById('netStatus').style.color='var(--red)';
+  log('err','Link failure','work-orders ↔ crew3 down. Fabric re-elects relay via crew2 ↔ crew3.');
+  log('info','Relay re-election','No more than one neighbour selected per hop. Others stay quiet.');
+  drawNet();
+  if(SELECTED) selectNode(SELECTED);
+}
+function restoreLink(){
+  BROKEN=null;
+  document.getElementById('netStatus').textContent='All links healthy';
+  document.getElementById('netStatus').style.color='var(--faint)';
+  log('ok','Link restored','work-orders ↔ crew3 healthy again.');
+  drawNet();
+  if(SELECTED) selectNode(SELECTED);
+}
+
+/* ═══════════════ MODE ═══════════════ */
+const MODE_COPY={
+ normal:{
+  kicker:'Normal conditions',
+  desc:'The agentic ontological layer runs on the utility\'s existing central systems. The swarm fabric federates the <b>fragmented edges</b> — the systems nobody integrated.',
+  net:'Central systems (SCADA · AMI · GIS · work orders)',
+  fabric:'Federates the edges',
+  agent:'The central systems',
+  l4:'Supervisory Admiral over specialists (water, weather &amp; hazard, compliance, assets, cost). Sees only the trust-weighted picture, resolves conflicts between specialists, exchanges structured information rather than conversational messages. Specialists <b>act</b>, not merely report, through explicit authority envelopes and an auditable log.',
+  l3:'Holds a library of scenario archetypes grounded in real events (freeze-thaw main-break seasons, flood, HazMat release, cascading outage) and <b>replays them continuously against live operational data</b> — asset registry, crew roster, traffic, weather, inventory — scoring each candidate response plan against a human-planning baseline.',
+  l2:'<b>Zone mesh</b> — a two-tier spatial-semantic map (service zones over semantic zones) with learned routing preferences between zones, weighted by inverse hop count. <b>Data-trust scoring</b> — every feed carries a decaying score for how much to believe it right now, and the weighting adapts to regime: stable → speed-of-reply, volatile → freshness, unknown → blend.',
+  l1:'Each node keeps a small local table of pheromone scores for its neighbours — trust, latency, reliability, <i>right now</i> — learned passively from who actually answers. When a message must travel more than one hop, a node selects <b>no more than one</b> neighbour to pass it to; the rest stay quiet.',
+  note:'<b>What changes in grid-down.</b> The fixed tier — pumps, treatment, SCADA — dies with the grid. The surviving mobile tier forms a <b>MANET</b>: crews, tankers and inspectors talking directly, with no central platform, no fixed power and no fixed infrastructure. The swarm fabric establishes it. The agentic layer <b>does not switch off and start improvising</b> — it runs on that MANET, against the scenarios already rehearsed and the trust scores already learned. <b>Authority envelopes and human gates are unchanged.</b>'
+ },
+ grid:{
+  kicker:'Grid down — mobile-tier MANET',
+  desc:'The fixed tier is gone. The <b>surviving mobile tier forms a MANET</b> and the agentic layer runs on it — against already-rehearsed scenarios, with authority envelopes unchanged.',
+  net:'MANET (crews · tankers · inspectors — no central platform)',
+  fabric:'Establishes the MANET',
+  agent:'The MANET',
+  l4:'Same Admiral and same specialists. They see the same trust-weighted picture — assembled from the mobile tier instead of the central systems. Same authority envelopes, same human approval gates. <b>Nothing about the decision authority changes; only the transport underneath it does.</b>',
+  l3:'The scenario library and the trust scores were learned <b>before</b> the grid went down. The freeze-thaw archetype is replayed against the surviving crews, the weather and the traffic — and the plan that was rehearsed is the plan that executes.',
+  l2:'The zone mesh survives as a <b>local</b> structure carried by the mobile nodes — each crew knows its zone and its neighbours\' zones, and the destination-zone pheromones still route toward the right place. Trust scores for dead feeds decay to zero on their own, with no one to tell them.',
+  l1:'This is where the fabric earns its place. With the control centre dark, each node <b>elects one neighbour to relay to</b> and the rest stay quiet. The message finds a way round the gap instead of the whole picture disappearing.',
+  note:'<b>What is honestly lost.</b> Pumps, treatment and SCADA die with the grid — we do not claim the mobile tier keeps fixed infrastructure alive. What survives is <b>communications and decision-making among the crews that are still moving</b>, and the plans that were already rehearsed against them.'
+ }
+};
+function setMode(m){
+  MODE=m; const c=MODE_COPY[m];
+  document.getElementById('btnNorm').className = m==='normal'?'on':'';
+  document.getElementById('btnGrid').className = m==='grid'?'on':'';
+  document.getElementById('modeKicker').textContent=c.kicker;
+  document.getElementById('modeDesc').innerHTML=c.desc;
+  document.getElementById('mNet').innerHTML=c.net;
+  document.getElementById('mFabric').textContent=c.fabric;
+  document.getElementById('mAgent').textContent=c.agent;
+  document.getElementById('l4d').innerHTML=c.l4;
+  document.getElementById('l3d').innerHTML=c.l3;
+  document.getElementById('l2d').innerHTML=c.l2;
+  document.getElementById('l1d').innerHTML=c.l1;
+  document.getElementById('modeNote').innerHTML=c.note;
+  drawNet();
+  if(m==='grid'){
+    log('err','GRID DOWN','Fixed tier lost: pumps, treatment, SCADA, control centre.');
+    log('warn','MANET forming','Surviving mobile tier establishing peer-to-peer comms. No central platform.');
+    log('hi','Agentic layer continues','Running on the MANET against already-rehearsed scenarios. Authority envelopes unchanged.');
+  } else {
+    log('info','Normal mode','Agentic layer on central systems. Swarm fabric federating fragmented edges.');
+  }
+}
+
+/* ═══════════════ LOOP ═══════════════ */
+let stepTimer=null, stepIdx=0;
+const STEPS=[
+ ['info','SENSE','Pulling live picture: SCADA · 250k AMI · GIS leak map · 1,482 work orders · crew roster · contractor status · weather · traffic.'],
+ ['info','ANALYSE','Trust-scoring every feed for right now. Leak-logger feed decaying (slow replies, 20 min) → weighted down. SCADA pressure fresh → weighted up.'],
+ ['hi','DECIDE','Replaying freeze-thaw archetype against today\'s crews, traffic and weather. Plan B = 1h58m vs human baseline 3h12m.'],
+ ['warn','AUTHORISE','Zone-3 isolation crosses the high-consequence threshold → human approval requested. Plan re-validated against the live picture first.'],
+ ['ok','ACT','Crew 2 dispatched with excavator + valve crew. Work order raised, parts reserved, contractor notified.'],
+ ['ok','VERIFY','Outcome reconciled against the rehearsed plan. Residual fed back into zone field, trust scores and the library.']
+];
+function log(cls,tag,msg){
+  const L=document.getElementById('log');
+  const d=document.createElement('div');
+  const t=new Date().toLocaleTimeString('en-GB',{hour12:false});
+  d.innerHTML='<span class="t">'+t+'</span><span class="'+cls+'">'+tag+'</span> — '+msg;
+  L.insertBefore(d,L.firstChild);
+  while(L.children.length>60) L.removeChild(L.lastChild);
+}
+function runLoop(){
+  resetLoop(true);
+  document.getElementById('btnRun').disabled=true;
+  stepIdx=0;
+  const steps=document.querySelectorAll('#flow .step');
+  const tick=()=>{
+    if(stepIdx>=STEPS.length){
+      document.getElementById('loopStatus').textContent='Loop complete — residual fed back into the library';
+      document.getElementById('btnRun').disabled=false;
+      stepIdx=0; return;
+    }
+    steps.forEach(s=>s.classList.remove('live','done'));
+    for(let i=0;i<stepIdx;i++) steps[i].classList.add('done');
+    steps[stepIdx].classList.add('live');
+    const [cls,tag,msg]=STEPS[stepIdx];
+    log(cls,tag,msg);
+    document.getElementById('loopStatus').textContent='Step '+(stepIdx+1)+' of 6 — '+tag;
+    stepIdx++;
+    stepTimer=setTimeout(tick,1100);
+  };
+  tick();
+}
+function resetLoop(quiet){
+  clearTimeout(stepTimer);
+  document.querySelectorAll('#flow .step').forEach(s=>s.classList.remove('live','done'));
+  document.getElementById('btnRun').disabled=false;
+  if(!quiet) document.getElementById('loopStatus').textContent='Idle — press run';
+}
+
+/* ═══════════════ LAYER ISOLATE ═══════════════ */
+document.querySelectorAll('#stack .layer').forEach(L=>{
+  L.addEventListener('mouseenter',()=>{
+    document.querySelectorAll('#stack .layer').forEach(x=>x.classList.add('dim'));
+    L.classList.remove('dim'); L.classList.add('hot');
+  });
+  L.addEventListener('mouseleave',()=>{
+    document.querySelectorAll('#stack .layer').forEach(x=>{x.classList.remove('dim','hot');});
+  });
+});
+
+/* ═══════════════ INIT ═══════════════ */
+drawNet();
+setMode('normal');
+log('info','AEGIS online','Normal mode. Layer stack loaded. Press "Run the loop" or switch to grid-down.');
+</script>
+</body>
+</html>
